@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package pos;
+
+option go_package = "github.com/Andrewalifb/alpha-pos-system-sales-service";
+
+import "google/protobuf/timestamp.proto";
+import "alpha-pos-system-sales-service/api/proto/common.proto";
+
+// PosCashDrawer
+message PosCashDrawer {
+  string drawer_id = 1;
+  string store_id = 2;
+  string employee_id = 3;
+  string receipt_id = 4;
+  double cash_in = 5;
+  double amount = 6;
+  double cash_out = 7;
+  google.protobuf.Timestamp transaction_time = 8;
+  string role_id = 9;
+  string branch_id = 10;
+  string company_id = 11;
+  string description = 12;
+  google.protobuf.Timestamp created_at = 13;
+  string created_by = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  string updated_by = 16;
+}
+
+// Request and Response messages
+message CreatePosCashDrawerRequest {
+  PosCashDrawer pos_cash_drawer = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message CreatePosCashDrawerResponse {
+  PosCashDrawer pos_cash_drawer = 1;
+}
+
+message ReadPosCashDrawerRequest {
+  string drawer_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message ReadPosCashDrawerResponse {
+  PosCashDrawer pos_cash_drawer = 1;
+}
+
+message UpdatePosCashDrawerRequest {
+  PosCashDrawer pos_cash_drawer = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message UpdatePosCashDrawerResponse {
+  PosCashDrawer pos_cash_drawer = 1;
+}
+
+message DeletePosCashDrawerRequest {
+  string drawer_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message DeletePosCashDrawerResponse {
+  bool success = 1;
+}
+
+message ReadAllPosCashDrawersRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  JWTPayload jwt_payload = 3;
+  string jwt_token = 4;
+}
+
+message ReadAllPosCashDrawersResponse {
+  repeated PosCashDrawer pos_cash_drawers = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  int32 max_page = 4;
+  int64 count = 5;
+}
+
+// PosCashDrawerService
+service PosCashDrawerService {
+  rpc CreatePosCashDrawer(CreatePosCashDrawerRequest) returns (CreatePosCashDrawerResponse);
+  rpc ReadPosCashDrawer(ReadPosCashDrawerRequest) returns (ReadPosCashDrawerResponse);
+  rpc UpdatePosCashDrawer(UpdatePosCashDrawerRequest) returns (UpdatePosCashDrawerResponse);
+  rpc DeletePosCashDrawer(DeletePosCashDrawerRequest) returns (DeletePosCashDrawerResponse);
+  rpc ReadAllPosCashDrawers(ReadAllPosCashDrawersRequest) returns (ReadAllPosCashDrawersResponse);
+}

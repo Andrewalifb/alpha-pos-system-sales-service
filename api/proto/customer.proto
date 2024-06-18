@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package pos;
+
+option go_package="github.com/Andrewalifb/alpha-pos-system-sales-service";
+
+import "google/protobuf/timestamp.proto";
+import "alpha-pos-system-sales-service/api/proto/common.proto"; 
+
+// PosCustomer
+message PosCustomer {
+  string customer_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string email = 4;
+  string phone_number = 5;
+  string date_of_birth = 6;
+  google.protobuf.Timestamp registration_date = 7;
+  string address = 8;
+  string city = 9;
+  string country = 10;
+  string branch_id = 11;
+  string company_id = 12;
+  google.protobuf.Timestamp created_at = 13;
+  string created_by = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  string updated_by = 16;
+}
+
+// Request and Response messages
+message CreatePosCustomerRequest {
+  PosCustomer pos_customer = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token =3;
+}
+
+message CreatePosCustomerResponse {
+  PosCustomer pos_customer = 1;
+}
+
+message ReadPosCustomerRequest {
+  string customer_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token =3;
+}
+
+message ReadPosCustomerResponse {
+  PosCustomer pos_customer = 1;
+}
+
+message UpdatePosCustomerRequest {
+  PosCustomer pos_customer = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token =3;
+}
+
+message UpdatePosCustomerResponse {
+  PosCustomer pos_customer = 1;
+}
+
+message DeletePosCustomerRequest {
+  string customer_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message DeletePosCustomerResponse {
+  bool success = 1;
+}
+
+message ReadAllPosCustomersRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  JWTPayload jwt_payload = 3;
+  string jwt_token = 4;
+}
+
+message ReadAllPosCustomersResponse {
+  repeated PosCustomer pos_customers = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  int32 max_page = 4;
+  int64 count = 5;
+}
+
+// PosCustomerService
+service PosCustomerService {
+  rpc CreatePosCustomer(CreatePosCustomerRequest) returns (CreatePosCustomerResponse);
+  rpc ReadPosCustomer(ReadPosCustomerRequest) returns (ReadPosCustomerResponse);
+  rpc UpdatePosCustomer(UpdatePosCustomerRequest) returns (UpdatePosCustomerResponse);
+  rpc DeletePosCustomer(DeletePosCustomerRequest) returns (DeletePosCustomerResponse);
+  rpc ReadAllPosCustomers(ReadAllPosCustomersRequest) returns (ReadAllPosCustomersResponse);
+}
