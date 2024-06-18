@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package pos;
+
+option go_package = "github.com/Andrewalifb/alpha-pos-system-sales-service";
+
+import "google/protobuf/timestamp.proto";
+import "alpha-pos-system-sales-service/api/proto/common.proto";
+
+// PosOnlinePayment
+message PosOnlinePayment {
+  string payment_id = 1;
+  string store_id = 2;
+  string employee_id = 3;
+  google.protobuf.Timestamp payment_date = 4;
+  string receipt_id = 5;
+  double amount = 6;
+  string payment_method = 7;
+  string role_id = 8;
+  string branch_id = 9;
+  string company_id = 10;
+  google.protobuf.Timestamp created_at = 11;
+  string created_by = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  string updated_by = 14;
+}
+
+// Request and Response messages
+message CreatePosOnlinePaymentRequest {
+  PosOnlinePayment pos_online_payment = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message CreatePosOnlinePaymentResponse {
+  PosOnlinePayment pos_online_payment = 1;
+}
+
+message ReadPosOnlinePaymentRequest {
+  string payment_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message ReadPosOnlinePaymentResponse {
+  PosOnlinePayment pos_online_payment = 1;
+}
+
+message UpdatePosOnlinePaymentRequest {
+  PosOnlinePayment pos_online_payment = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message UpdatePosOnlinePaymentResponse {
+  PosOnlinePayment pos_online_payment = 1;
+}
+
+message DeletePosOnlinePaymentRequest {
+  string payment_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message DeletePosOnlinePaymentResponse {
+  bool success = 1;
+}
+
+message ReadAllPosOnlinePaymentsRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  JWTPayload jwt_payload = 3;
+  string jwt_token = 4;
+}
+
+message ReadAllPosOnlinePaymentsResponse {
+  repeated PosOnlinePayment pos_online_payments = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  int32 max_page = 4;
+  int64 count = 5;
+}
+
+// PosOnlinePaymentService
+service PosOnlinePaymentService {
+  rpc CreatePosOnlinePayment(CreatePosOnlinePaymentRequest) returns (CreatePosOnlinePaymentResponse);
+  rpc ReadPosOnlinePayment(ReadPosOnlinePaymentRequest) returns (ReadPosOnlinePaymentResponse);
+  rpc UpdatePosOnlinePayment(UpdatePosOnlinePaymentRequest) returns (UpdatePosOnlinePaymentResponse);
+  rpc DeletePosOnlinePayment(DeletePosOnlinePaymentRequest) returns (DeletePosOnlinePaymentResponse);
+  rpc ReadAllPosOnlinePayments(ReadAllPosOnlinePaymentsRequest) returns (ReadAllPosOnlinePaymentsResponse);
+}

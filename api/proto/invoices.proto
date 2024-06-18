@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package pos;
+
+option go_package = "github.com/Andrewalifb/alpha-pos-system-sales-service";
+
+import "google/protobuf/timestamp.proto";
+import "alpha-pos-system-sales-service/api/proto/common.proto";
+
+// PosInvoice
+message PosInvoice {
+  string invoice_id = 1;
+  string receipt_id = 2;
+  google.protobuf.Timestamp date = 3;
+  double amount = 4;
+  double discounts = 5;
+  double taxes = 6;
+  string branch_id = 7;
+  string company_id = 8;
+  google.protobuf.Timestamp created_at = 9;
+  string created_by = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  string updated_by = 12;
+}
+
+// Request and Response messages
+message CreatePosInvoiceRequest {
+  PosInvoice pos_invoice = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message CreatePosInvoiceResponse {
+  PosInvoice pos_invoice = 1;
+}
+
+message ReadPosInvoiceRequest {
+  string invoice_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message ReadPosInvoiceResponse {
+  PosInvoice pos_invoice = 1;
+}
+
+message UpdatePosInvoiceRequest {
+  PosInvoice pos_invoice = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message UpdatePosInvoiceResponse {
+  PosInvoice pos_invoice = 1;
+}
+
+message DeletePosInvoiceRequest {
+  string invoice_id = 1;
+  JWTPayload jwt_payload = 2;
+  string jwt_token = 3;
+}
+
+message DeletePosInvoiceResponse {
+  bool success = 1;
+}
+
+message ReadAllPosInvoicesRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  JWTPayload jwt_payload = 3;
+  string jwt_token = 4;
+}
+
+message ReadAllPosInvoicesResponse {
+  repeated PosInvoice pos_invoices = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  int32 max_page = 4;
+  int64 count = 5;
+}
+
+// PosInvoiceService
+service PosInvoiceService {
+  rpc CreatePosInvoice(CreatePosInvoiceRequest) returns (CreatePosInvoiceResponse);
+  rpc ReadPosInvoice(ReadPosInvoiceRequest) returns (ReadPosInvoiceResponse);
+  rpc UpdatePosInvoice(UpdatePosInvoiceRequest) returns (UpdatePosInvoiceResponse);
+  rpc DeletePosInvoice(DeletePosInvoiceRequest) returns (DeletePosInvoiceResponse);
+  rpc ReadAllPosInvoices(ReadAllPosInvoicesRequest) returns (ReadAllPosInvoicesResponse);
+}
