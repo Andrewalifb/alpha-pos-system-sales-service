@@ -14,6 +14,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/utils"
 	"github.com/google/uuid"
 	"github.com/streadway/amqp"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -27,24 +28,28 @@ type PosSaleService interface {
 
 type posSaleService struct {
 	pb.UnimplementedPosSaleServiceServer
-	saleRepo          repository.PosSaleRepository
-	invoiceRepo       repository.PosInvoiceRepository
-	cashDrawerRepo    repository.PosCashDrawerRepository
-	onlinePyamentRepo repository.PosOnlinePaymentRepository
-	paymentMethod     repository.PosPaymentMethodRepository
-	customer          repository.PosCustomerRepository
-	RabbitMQConn      *amqp.Connection
+	saleRepo           repository.PosSaleRepository
+	invoiceRepo        repository.PosInvoiceRepository
+	cashDrawerRepo     repository.PosCashDrawerRepository
+	onlinePyamentRepo  repository.PosOnlinePaymentRepository
+	paymentMethod      repository.PosPaymentMethodRepository
+	customer           repository.PosCustomerRepository
+	RabbitMQConn       *amqp.Connection
+	ProductServiceConn *grpc.ClientConn
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosSaleService(saleRepo repository.PosSaleRepository, invoiceRepo repository.PosInvoiceRepository, cashDrawerRepo repository.PosCashDrawerRepository, onlinePyamentRepo repository.PosOnlinePaymentRepository, paymentMethod repository.PosPaymentMethodRepository, customer repository.PosCustomerRepository, rabbitMQConn *amqp.Connection) *posSaleService {
+func NewPosSaleService(saleRepo repository.PosSaleRepository, invoiceRepo repository.PosInvoiceRepository, cashDrawerRepo repository.PosCashDrawerRepository, onlinePyamentRepo repository.PosOnlinePaymentRepository, paymentMethod repository.PosPaymentMethodRepository, customer repository.PosCustomerRepository, rabbitMQConn *amqp.Connection, productServiceConn *grpc.ClientConn, companyServiceConn *grpc.ClientConn) *posSaleService {
 	return &posSaleService{
-		saleRepo:          saleRepo,
-		invoiceRepo:       invoiceRepo,
-		cashDrawerRepo:    cashDrawerRepo,
-		onlinePyamentRepo: onlinePyamentRepo,
-		paymentMethod:     paymentMethod,
-		customer:          customer,
-		RabbitMQConn:      rabbitMQConn,
+		saleRepo:           saleRepo,
+		invoiceRepo:        invoiceRepo,
+		cashDrawerRepo:     cashDrawerRepo,
+		onlinePyamentRepo:  onlinePyamentRepo,
+		paymentMethod:      paymentMethod,
+		customer:           customer,
+		RabbitMQConn:       rabbitMQConn,
+		ProductServiceConn: productServiceConn,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
@@ -54,12 +59,12 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 	token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, req.JwtToken)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant create sales transactions")
 	}
 
@@ -79,28 +84,28 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 		posSale.UpdatedAt = timeStamp
 		posSale.SaleDate = timeStamp
 
-		// Get product data
-		productData, err := utils.GetPosProduct(posSale.ProductId, token)
+		// get prodict data from Product Service
+		productData, err := utils.GetPosProducByBarcode(s.ProductServiceConn, posSale.ProductId, req.JwtPayload, token)
 		if err != nil {
 			return nil, err
 		}
 
 		// check if product id has promotions
-		promotionData, err := utils.GetPosPromotionByProductID(productData.Data.ProductID, req.JwtToken)
+		promotionData, err := utils.GetPosPromotionByProductId(s.ProductServiceConn, productData.PosProduct.ProductId, req.JwtPayload, req.JwtToken)
 		if err != nil {
 			fmt.Println("Err :", err)
 		}
 
 		// Count total all discount
 		if promotionData == nil {
-			posSale.Price = productData.Data.Price
+			posSale.Price = productData.PosProduct.Price
 		} else {
-			if promotionData.DiscountRate != 0.0 && promotionData.Active {
-				countDiscountAmount := productData.Data.Price * promotionData.DiscountRate
+			if promotionData.PosPromotion.DiscountRate != 0.0 && promotionData.PosPromotion.Active {
+				countDiscountAmount := productData.PosProduct.Price * promotionData.PosPromotion.DiscountRate
 				getTotalDiscount += countDiscountAmount
-				posSale.Price = productData.Data.Price - countDiscountAmount
-			} else if promotionData.DiscountRate == 0.0 {
-				posSale.Price = productData.Data.Price
+				posSale.Price = productData.PosProduct.Price - countDiscountAmount
+			} else if promotionData.PosPromotion.DiscountRate == 0.0 {
+				posSale.Price = productData.PosProduct.Price
 			}
 		}
 
@@ -111,7 +116,7 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 		gormSale := &entity.PosSale{
 			SaleID:          uuid.MustParse(posSale.SaleId), // auto
 			ReceiptID:       posSale.ReceiptId,              // auto
-			ProductID:       uuid.MustParse(productData.Data.ProductID),
+			ProductID:       uuid.MustParse(productData.PosProduct.ProductId),
 			CustomerID:      uuid.MustParse(posSale.CustomerId),
 			Quantity:        int(posSale.Quantity),
 			Price:           posSale.Price,                          // auto
@@ -129,7 +134,7 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 		}
 
 		item := dto.Items{
-			ProductName: productData.Data.ProductName,
+			ProductName: productData.PosProduct.ProductName,
 			Quantity:    int(posSale.Quantity),
 			Price:       posSale.Price,
 			TotalPrice:  posSale.TotalPrice,
@@ -146,7 +151,7 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 			BranchId:  gormSale.BranchID.String(),
 		}
 
-		_, err = utils.CreatePosInventoryHistory(inventoryHistory, req.JwtPayload, token)
+		_, err = utils.CreatePosInventoryHistory(inventoryHistory, req.JwtPayload, token) // #
 		if err != nil {
 			return nil, err
 		}
@@ -252,12 +257,12 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 		}
 	}
 
-	userData, err := utils.GetPosUser(req.JwtPayload.UserId, token)
+	userData, err := utils.GetPosUserById(s.CompanyServiceConn, req.JwtPayload.UserId, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	storeData, err := utils.GetPosStore(req.JwtPayload.StoreId, token)
+	storeData, err := utils.GetPosStoreById(s.CompanyServiceConn, req.JwtPayload.StoreId, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +272,7 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 		return nil, err
 	}
 
+	// Rabbit MQ producer to digital receipt
 	ch, err := s.RabbitMQConn.Channel()
 	if err != nil {
 		return nil, err
@@ -278,9 +284,9 @@ func (s *posSaleService) CreatePosSales(ctx context.Context, req *pb.CreatePosSa
 			EmailAddress: customer.Email,
 		},
 		Header: dto.HeaderReceipt{
-			StoreName:           storeData.Data.StoreName,
-			StoreAddress:        storeData.Data.Location,
-			CashierName:         userData.Data.Username,
+			StoreName:           storeData.PosStore.StoreName,
+			StoreAddress:        storeData.PosStore.Location,
+			CashierName:         userData.PosUser.Username,
 			ReceiptID:           receiptID,
 			TransactionDateTime: timeStamp.String(),
 		},
@@ -315,19 +321,19 @@ func (s *posSaleService) ReadAllPosSales(ctx context.Context, req *pb.ReadAllPos
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read all sales transactions")
 	}
 
-	paginationResult, err := s.saleRepo.ReadAllPosSales(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.saleRepo.ReadAllPosSales(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -369,15 +375,15 @@ func (s *posSaleService) ReadAllPosSales(ctx context.Context, req *pb.ReadAllPos
 func (s *posSaleService) ReadPosSale(ctx context.Context, req *pb.ReadPosSaleRequest) (*pb.ReadPosSaleResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read sales transactions")
 	}
 
@@ -390,20 +396,20 @@ func (s *posSaleService) ReadPosSale(ctx context.Context, req *pb.ReadPosSaleReq
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posSale.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posSale.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve sales data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posSale.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posSale.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only retrieve sales data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posSale.StoreId, req.JwtPayload.StoreId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posSale.StoreId, req.JwtPayload.StoreId) {
 			return nil, errors.New("store users can only retrieve sales data within their branch")
 		}
 	}
@@ -416,15 +422,15 @@ func (s *posSaleService) ReadPosSale(ctx context.Context, req *pb.ReadPosSaleReq
 func (s *posSaleService) UpdatePosSale(ctx context.Context, req *pb.UpdatePosSaleRequest) (*pb.UpdatePosSaleResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("store users cant update sales data")
 	}
 
@@ -436,8 +442,8 @@ func (s *posSaleService) UpdatePosSale(ctx context.Context, req *pb.UpdatePosSal
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posSale.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posSale.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only update sales data within their branch")
 		}
 	}
@@ -479,15 +485,15 @@ func (s *posSaleService) UpdatePosSale(ctx context.Context, req *pb.UpdatePosSal
 func (s *posSaleService) DeletePosSale(ctx context.Context, req *pb.DeletePosSaleRequest) (*pb.DeletePosSaleResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("store users cant delete sales data")
 	}
 
@@ -499,8 +505,8 @@ func (s *posSaleService) DeletePosSale(ctx context.Context, req *pb.DeletePosSal
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posSale.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posSale.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only delete sales data within their branch")
 		}
 	}

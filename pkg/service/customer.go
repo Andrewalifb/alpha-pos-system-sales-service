@@ -13,6 +13,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/utils"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -26,27 +27,29 @@ type PosCustomerService interface {
 
 type posCustomerService struct {
 	pb.UnimplementedPosCustomerServiceServer
-	customerRepo repository.PosCustomerRepository
+	customerRepo       repository.PosCustomerRepository
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosCustomerService(customerRepo repository.PosCustomerRepository) *posCustomerService {
+func NewPosCustomerService(customerRepo repository.PosCustomerRepository, companyServiceConn *grpc.ClientConn) *posCustomerService {
 	return &posCustomerService{
-		customerRepo: customerRepo,
+		customerRepo:       customerRepo,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
 func (s *posCustomerService) CreatePosCustomer(ctx context.Context, req *pb.CreatePosCustomerRequest) (*pb.CreatePosCustomerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant create customer data")
 	}
 
@@ -100,19 +103,19 @@ func (s *posCustomerService) ReadAllPosCustomers(ctx context.Context, req *pb.Re
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read all customer data")
 	}
 
-	paginationResult, err := s.customerRepo.ReadAllPosCustomers(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.customerRepo.ReadAllPosCustomers(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -153,15 +156,15 @@ func (s *posCustomerService) ReadAllPosCustomers(ctx context.Context, req *pb.Re
 func (s *posCustomerService) ReadPosCustomer(ctx context.Context, req *pb.ReadPosCustomerRequest) (*pb.ReadPosCustomerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read customer data")
 	}
 
@@ -174,20 +177,20 @@ func (s *posCustomerService) ReadPosCustomer(ctx context.Context, req *pb.ReadPo
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posCustomer.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posCustomer.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve customer data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only retrieve customer data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("store users can only retrieve customer data within their branch")
 		}
 	}
@@ -201,15 +204,15 @@ func (s *posCustomerService) UpdatePosCustomer(ctx context.Context, req *pb.Upda
 	// Get the role name from the role ID in the JWT payload
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant update customer data")
 	}
 
@@ -222,14 +225,14 @@ func (s *posCustomerService) UpdatePosCustomer(ctx context.Context, req *pb.Upda
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only update customer data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("store users can only update customer data within their branch")
 		}
 	}
@@ -274,15 +277,15 @@ func (s *posCustomerService) UpdatePosCustomer(ctx context.Context, req *pb.Upda
 func (s *posCustomerService) DeletePosCustomer(ctx context.Context, req *pb.DeletePosCustomerRequest) (*pb.DeletePosCustomerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant delete sales data")
 	}
 
@@ -295,14 +298,14 @@ func (s *posCustomerService) DeletePosCustomer(ctx context.Context, req *pb.Dele
 	companyRole := os.Getenv("COMPANY_USER_ROLE")
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posCustomer.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posCustomer.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only delete customer data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posCustomer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only delete customer data within their branch")
 		}
 	}

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	pb "github.com/Andrewalifb/alpha-pos-system-sales-service/api/proto"
-	"github.com/Andrewalifb/alpha-pos-system-sales-service/dto"
 	"io"
 	"net/http"
 	"time"
+
+	pb "github.com/Andrewalifb/alpha-pos-system-sales-service/api/proto"
+	"github.com/Andrewalifb/alpha-pos-system-sales-service/dto"
 )
 
 // CreatePosInventoryHistory sends a POST request to create a new POS inventory history record

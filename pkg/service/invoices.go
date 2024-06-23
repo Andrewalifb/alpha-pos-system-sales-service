@@ -13,6 +13,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/utils"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -26,27 +27,29 @@ type PosInvoiceService interface {
 
 type posInvoiceService struct {
 	pb.UnimplementedPosInvoiceServiceServer
-	invoiceRepo repository.PosInvoiceRepository
+	invoiceRepo        repository.PosInvoiceRepository
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosInvoiceService(invoiceRepo repository.PosInvoiceRepository) *posInvoiceService {
+func NewPosInvoiceService(invoiceRepo repository.PosInvoiceRepository, companyServiceConn *grpc.ClientConn) *posInvoiceService {
 	return &posInvoiceService{
-		invoiceRepo: invoiceRepo,
+		invoiceRepo:        invoiceRepo,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
 func (s *posInvoiceService) CreatePosInvoice(ctx context.Context, req *pb.CreatePosInvoiceRequest) (*pb.CreatePosInvoiceResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant create invoice")
 	}
 
@@ -90,19 +93,19 @@ func (s *posInvoiceService) ReadAllPosInvoices(ctx context.Context, req *pb.Read
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read all invoice")
 	}
 
-	paginationResult, err := s.invoiceRepo.ReadAllPosInvoices(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.invoiceRepo.ReadAllPosInvoices(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -139,15 +142,15 @@ func (s *posInvoiceService) ReadAllPosInvoices(ctx context.Context, req *pb.Read
 func (s *posInvoiceService) ReadPosInvoice(ctx context.Context, req *pb.ReadPosInvoiceRequest) (*pb.ReadPosInvoiceResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read invoice")
 	}
 
@@ -160,20 +163,20 @@ func (s *posInvoiceService) ReadPosInvoice(ctx context.Context, req *pb.ReadPosI
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posInvoice.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posInvoice.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve invoice data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only retrieve invoice data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("store users can only retrieve invoice data within their branch")
 		}
 	}
@@ -187,15 +190,15 @@ func (s *posInvoiceService) UpdatePosInvoice(ctx context.Context, req *pb.Update
 	// Get the role name from the role ID in the JWT payload
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant update invoice data")
 	}
 
@@ -207,8 +210,8 @@ func (s *posInvoiceService) UpdatePosInvoice(ctx context.Context, req *pb.Update
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only update invoice data within their branch")
 		}
 	}
@@ -245,15 +248,15 @@ func (s *posInvoiceService) UpdatePosInvoice(ctx context.Context, req *pb.Update
 func (s *posInvoiceService) DeletePosInvoice(ctx context.Context, req *pb.DeletePosInvoiceRequest) (*pb.DeletePosInvoiceResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant update invoice data")
 	}
 
@@ -265,8 +268,8 @@ func (s *posInvoiceService) DeletePosInvoice(ctx context.Context, req *pb.Delete
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posInvoice.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only delete invoice data within their branch")
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/entity"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -27,27 +28,29 @@ type PosPaymentMethodService interface {
 
 type posPaymentMethodService struct {
 	pb.UnimplementedPosPaymentMethodServiceServer
-	repo repository.PosPaymentMethodRepository
+	repo               repository.PosPaymentMethodRepository
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosPaymentMethodService(repo repository.PosPaymentMethodRepository) *posPaymentMethodService {
+func NewPosPaymentMethodService(repo repository.PosPaymentMethodRepository, companyServiceConn *grpc.ClientConn) *posPaymentMethodService {
 	return &posPaymentMethodService{
-		repo: repo,
+		repo:               repo,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
 func (s *posPaymentMethodService) CreatePosPaymentMethod(ctx context.Context, req *pb.CreatePosPaymentMethodRequest) (*pb.CreatePosPaymentMethodResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to create new payment method")
 	}
 
@@ -81,15 +84,15 @@ func (s *posPaymentMethodService) CreatePosPaymentMethod(ctx context.Context, re
 func (s *posPaymentMethodService) ReadPosPaymentMethod(ctx context.Context, req *pb.ReadPosPaymentMethodRequest) (*pb.ReadPosPaymentMethodResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to read payment method")
 	}
 
@@ -102,20 +105,20 @@ func (s *posPaymentMethodService) ReadPosPaymentMethod(ctx context.Context, req 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve payment method data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("branch users can only retrieve payment method data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("store users can only retrieve payment method data within their company")
 		}
 	}
@@ -128,15 +131,15 @@ func (s *posPaymentMethodService) ReadPosPaymentMethod(ctx context.Context, req 
 func (s *posPaymentMethodService) UpdatePosPaymentMethod(ctx context.Context, req *pb.UpdatePosPaymentMethodRequest) (*pb.UpdatePosPaymentMethodResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to update payment method")
 	}
 
@@ -148,8 +151,8 @@ func (s *posPaymentMethodService) UpdatePosPaymentMethod(ctx context.Context, re
 
 	companyRole := os.Getenv("COMPANY_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only update payment method data within their company")
 		}
 	}
@@ -183,15 +186,15 @@ func (s *posPaymentMethodService) UpdatePosPaymentMethod(ctx context.Context, re
 func (s *posPaymentMethodService) DeletePosPaymentMethod(ctx context.Context, req *pb.DeletePosPaymentMethodRequest) (*pb.DeletePosPaymentMethodResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to delete payment method")
 	}
 
@@ -203,8 +206,8 @@ func (s *posPaymentMethodService) DeletePosPaymentMethod(ctx context.Context, re
 
 	companyRole := os.Getenv("COMPANY_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posPaymentMethod.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only delete payment method data within their company")
 		}
 	}
@@ -228,19 +231,19 @@ func (s *posPaymentMethodService) ReadAllPosPaymentMethods(ctx context.Context, 
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to read all payment method")
 	}
 
-	paginationResult, err := s.repo.ReadAllPosPaymentMethods(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.repo.ReadAllPosPaymentMethods(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}

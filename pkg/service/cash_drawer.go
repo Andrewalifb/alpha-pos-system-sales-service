@@ -13,6 +13,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/utils"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -26,27 +27,29 @@ type PosCashDrawerService interface {
 
 type PosCashDrawerServiceServer struct {
 	pb.UnimplementedPosCashDrawerServiceServer
-	cashDrawerRepo repository.PosCashDrawerRepository
+	cashDrawerRepo     repository.PosCashDrawerRepository
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosCashDrawerServiceServer(cashDrawerRepo repository.PosCashDrawerRepository) *PosCashDrawerServiceServer {
+func NewPosCashDrawerServiceServer(cashDrawerRepo repository.PosCashDrawerRepository, companyServiceConn *grpc.ClientConn) *PosCashDrawerServiceServer {
 	return &PosCashDrawerServiceServer{
-		cashDrawerRepo: cashDrawerRepo,
+		cashDrawerRepo:     cashDrawerRepo,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
 func (s *PosCashDrawerServiceServer) CreatePosCashDrawer(ctx context.Context, req *pb.CreatePosCashDrawerRequest) (*pb.CreatePosCashDrawerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant create cash drawer")
 	}
 
@@ -80,7 +83,7 @@ func (s *PosCashDrawerServiceServer) CreatePosCashDrawer(ctx context.Context, re
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
 	// set Branch ID base in login role
-	switch loginRole.Data.RoleName {
+	switch loginRole.PosRole.RoleName {
 	case branchRole:
 		gormCashDrawer.BranchID = utils.ParseUUID(req.JwtPayload.BranchId)
 		gormCashDrawer.StoreID = utils.ParseUUID(req.PosCashDrawer.StoreId)
@@ -111,19 +114,19 @@ func (s *PosCashDrawerServiceServer) ReadAllPosCashDrawers(ctx context.Context, 
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read all cash drawer")
 	}
 
-	paginationResult, err := s.cashDrawerRepo.ReadAllPosCashDrawers(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.cashDrawerRepo.ReadAllPosCashDrawers(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -164,15 +167,15 @@ func (s *PosCashDrawerServiceServer) ReadAllPosCashDrawers(ctx context.Context, 
 func (s *PosCashDrawerServiceServer) ReadPosCashDrawer(ctx context.Context, req *pb.ReadPosCashDrawerRequest) (*pb.ReadPosCashDrawerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read cash drawer")
 	}
 
@@ -185,20 +188,20 @@ func (s *PosCashDrawerServiceServer) ReadPosCashDrawer(ctx context.Context, req 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posCashDrawer.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posCashDrawer.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve cash drawer data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posCashDrawer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posCashDrawer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only retrieve cash drawer data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posCashDrawer.StoreId, req.JwtPayload.StoreId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posCashDrawer.StoreId, req.JwtPayload.StoreId) {
 			return nil, errors.New("store users can only retrieve cash drawer data within their store")
 		}
 	}
@@ -211,15 +214,15 @@ func (s *PosCashDrawerServiceServer) ReadPosCashDrawer(ctx context.Context, req 
 func (s *PosCashDrawerServiceServer) UpdatePosCashDrawer(ctx context.Context, req *pb.UpdatePosCashDrawerRequest) (*pb.UpdatePosCashDrawerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant update cash drawer")
 	}
 
@@ -231,8 +234,8 @@ func (s *PosCashDrawerServiceServer) UpdatePosCashDrawer(ctx context.Context, re
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posCashDrawer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posCashDrawer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only update cash drawer data within their branch")
 		}
 	}
@@ -278,15 +281,15 @@ func (s *PosCashDrawerServiceServer) UpdatePosCashDrawer(ctx context.Context, re
 func (s *PosCashDrawerServiceServer) DeletePosCashDrawer(ctx context.Context, req *pb.DeletePosCashDrawerRequest) (*pb.DeletePosCashDrawerResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant delete cash drawer")
 	}
 
@@ -298,8 +301,8 @@ func (s *PosCashDrawerServiceServer) DeletePosCashDrawer(ctx context.Context, re
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posCashDrawer.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posCashDrawer.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only delete cash drawer data within their branch")
 		}
 	}

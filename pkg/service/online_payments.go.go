@@ -13,6 +13,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/utils"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -26,27 +27,29 @@ type PosOnlinePaymentService interface {
 
 type posOnlinePaymentService struct {
 	pb.UnimplementedPosOnlinePaymentServiceServer
-	onlinePaymentRepo repository.PosOnlinePaymentRepository
+	onlinePaymentRepo  repository.PosOnlinePaymentRepository
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosOnlinePaymentService(onlinePaymentRepo repository.PosOnlinePaymentRepository) *posOnlinePaymentService {
+func NewPosOnlinePaymentService(onlinePaymentRepo repository.PosOnlinePaymentRepository, companyServiceConn *grpc.ClientConn) *posOnlinePaymentService {
 	return &posOnlinePaymentService{
-		onlinePaymentRepo: onlinePaymentRepo,
+		onlinePaymentRepo:  onlinePaymentRepo,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
 func (s *posOnlinePaymentService) CreatePosOnlinePayment(ctx context.Context, req *pb.CreatePosOnlinePaymentRequest) (*pb.CreatePosOnlinePaymentResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant create new online payment")
 	}
 
@@ -87,15 +90,15 @@ func (s *posOnlinePaymentService) CreatePosOnlinePayment(ctx context.Context, re
 func (s *posOnlinePaymentService) ReadPosOnlinePayment(ctx context.Context, req *pb.ReadPosOnlinePaymentRequest) (*pb.ReadPosOnlinePaymentResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read online payment")
 	}
 
@@ -108,20 +111,20 @@ func (s *posOnlinePaymentService) ReadPosOnlinePayment(ctx context.Context, req 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posOnlinePayment.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posOnlinePayment.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve online payment data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posOnlinePayment.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posOnlinePayment.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only retrieve online payment data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posOnlinePayment.StoreId, req.JwtPayload.StoreId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posOnlinePayment.StoreId, req.JwtPayload.StoreId) {
 			return nil, errors.New("store users can only retrieve online payment data within their branch")
 		}
 	}
@@ -135,15 +138,15 @@ func (s *posOnlinePaymentService) UpdatePosOnlinePayment(ctx context.Context, re
 	// Get the role name from the role ID in the JWT payload
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant update online payment data")
 	}
 
@@ -155,8 +158,8 @@ func (s *posOnlinePaymentService) UpdatePosOnlinePayment(ctx context.Context, re
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posOnlinePayment.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posOnlinePayment.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only update online payment data within their branch")
 		}
 	}
@@ -195,15 +198,15 @@ func (s *posOnlinePaymentService) UpdatePosOnlinePayment(ctx context.Context, re
 func (s *posOnlinePaymentService) DeletePosOnlinePayment(ctx context.Context, req *pb.DeletePosOnlinePaymentRequest) (*pb.DeletePosOnlinePaymentResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant delete online payment data")
 	}
 
@@ -215,8 +218,8 @@ func (s *posOnlinePaymentService) DeletePosOnlinePayment(ctx context.Context, re
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posOnlinePayment.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posOnlinePayment.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only delete online payment data within their branch")
 		}
 	}
@@ -240,19 +243,19 @@ func (s *posOnlinePaymentService) ReadAllPosOnlinePayments(ctx context.Context, 
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant read all online payment")
 	}
 
-	paginationResult, err := s.onlinePaymentRepo.ReadAllPosOnlinePayments(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.onlinePaymentRepo.ReadAllPosOnlinePayments(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
