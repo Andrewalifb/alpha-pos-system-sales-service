@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package pos;
+
+option go_package="github.com/Andrewalifb/alpha-pos-system-sales-service";
+
+import "google/protobuf/timestamp.proto";
+import "alpha-pos-system-sales-service/api/proto/common.proto";
+
+// PosStore
+message PosStore {
+  string store_id = 1;
+  string store_name = 2;
+  string branch_id = 3;
+  string location = 4;
+  string company_id = 5;
+  google.protobuf.Timestamp created_at = 6;
+  string created_by = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  string updated_by = 9;
+}
+
+// Request and Response messages
+message CreatePosStoreRequest {
+  PosStore pos_store = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message CreatePosStoreResponse {
+  PosStore pos_store = 1;
+}
+
+message ReadPosStoreRequest {
+  string store_id = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message ReadPosStoreResponse {
+  PosStore pos_store = 1;
+}
+
+message UpdatePosStoreRequest {
+  PosStore pos_store = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message UpdatePosStoreResponse {
+  PosStore pos_store = 1;
+}
+
+message DeletePosStoreRequest {
+  string store_id = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message DeletePosStoreResponse {
+  bool success = 1;
+}
+
+message ReadAllPosStoresRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  JWTPayload jwt_payload = 3;
+}
+
+message ReadAllPosStoresResponse {
+  repeated PosStore pos_stores = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  int32 max_page = 4;
+  int64 count = 5;
+}
+
+
+message GetNextReceiptIDRequest {
+  string store_id = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message GetNextReceiptIDResponse {
+  int32 receipt_id = 1;
+}
+
+// PosStoreService
+service PosStoreService {
+  rpc CreatePosStore(CreatePosStoreRequest) returns (CreatePosStoreResponse);
+  rpc ReadPosStore(ReadPosStoreRequest) returns (ReadPosStoreResponse);
+  rpc UpdatePosStore(UpdatePosStoreRequest) returns (UpdatePosStoreResponse);
+  rpc DeletePosStore(DeletePosStoreRequest) returns (DeletePosStoreResponse);
+  rpc ReadAllPosStores(ReadAllPosStoresRequest) returns (ReadAllPosStoresResponse);
+  rpc GetNextReceiptID(GetNextReceiptIDRequest) returns (GetNextReceiptIDResponse); // New method
+}

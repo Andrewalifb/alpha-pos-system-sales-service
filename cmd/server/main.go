@@ -24,6 +24,8 @@ func main() {
 	// Initialize the database
 	dbConfig := config.NewConfig()
 	rbConfig := config.NewRabbitMqCofig()
+	grpcConfig := config.NewGRPCConfig()
+
 	// Initialize the repositories
 	cashDrawerRepo := repository.NewPosCashDrawerRepository(dbConfig.SQLDB, dbConfig.RedisDB)
 	customerRepo := repository.NewPosCustomerRepository(dbConfig.SQLDB, dbConfig.RedisDB)
@@ -34,13 +36,13 @@ func main() {
 	saleRepo := repository.NewPosSaleRepository(dbConfig.SQLDB, dbConfig.RedisDB)
 
 	// Initialize the services
-	cashDrawerSvc := service.NewPosCashDrawerServiceServer(cashDrawerRepo)
-	customerSvc := service.NewPosCustomerService(customerRepo)
-	invoiceSvc := service.NewPosInvoiceService(invoiceRepo)
-	onlinePaymentSvc := service.NewPosOnlinePaymentService(onlinePaymentRepo)
-	paymentMethodSvc := service.NewPosPaymentMethodService(paymentMethodRepo)
-	returnSvc := service.NewPosReturnService(returnRepo)
-	saleSvc := service.NewPosSaleService(saleRepo, invoiceRepo, cashDrawerRepo, onlinePaymentRepo, paymentMethodRepo, customerRepo, rbConfig.RabbitMQConn)
+	cashDrawerSvc := service.NewPosCashDrawerServiceServer(cashDrawerRepo, grpcConfig.CompanyServiceConn)
+	customerSvc := service.NewPosCustomerService(customerRepo, grpcConfig.CompanyServiceConn)
+	invoiceSvc := service.NewPosInvoiceService(invoiceRepo, grpcConfig.CompanyServiceConn)
+	onlinePaymentSvc := service.NewPosOnlinePaymentService(onlinePaymentRepo, grpcConfig.CompanyServiceConn)
+	paymentMethodSvc := service.NewPosPaymentMethodService(paymentMethodRepo, grpcConfig.CompanyServiceConn)
+	returnSvc := service.NewPosReturnService(returnRepo, grpcConfig.CompanyServiceConn)
+	saleSvc := service.NewPosSaleService(saleRepo, invoiceRepo, cashDrawerRepo, onlinePaymentRepo, paymentMethodRepo, customerRepo, rbConfig.RabbitMQConn, grpcConfig.ProductServiceConn, grpcConfig.CompanyServiceConn)
 
 	// Create a gRPC server
 	s := grpc.NewServer()

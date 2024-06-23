@@ -12,6 +12,7 @@ import (
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/pkg/repository"
 	"github.com/Andrewalifb/alpha-pos-system-sales-service/utils"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -25,27 +26,29 @@ type PosReturnService interface {
 
 type posReturnService struct {
 	pb.UnimplementedPosReturnServiceServer
-	returnRepo repository.PosReturnRepository
+	returnRepo         repository.PosReturnRepository
+	CompanyServiceConn *grpc.ClientConn
 }
 
-func NewPosReturnService(returnRepo repository.PosReturnRepository) *posReturnService {
+func NewPosReturnService(returnRepo repository.PosReturnRepository, companyServiceConn *grpc.ClientConn) *posReturnService {
 	return &posReturnService{
-		returnRepo: returnRepo,
+		returnRepo:         returnRepo,
+		CompanyServiceConn: companyServiceConn,
 	}
 }
 
 func (s *posReturnService) CreatePosReturn(ctx context.Context, req *pb.CreatePosReturnRequest) (*pb.CreatePosReturnResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to create new return")
 	}
 
@@ -92,19 +95,19 @@ func (s *posReturnService) ReadAllPosReturns(ctx context.Context, req *pb.ReadAl
 
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to read all return")
 	}
 
-	paginationResult, err := s.returnRepo.ReadAllPosReturns(pagination, loginRole.Data.RoleName, req.JwtPayload)
+	paginationResult, err := s.returnRepo.ReadAllPosReturns(pagination, loginRole.PosRole.RoleName, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -145,15 +148,15 @@ func (s *posReturnService) ReadAllPosReturns(ctx context.Context, req *pb.ReadAl
 func (s *posReturnService) ReadPosReturn(ctx context.Context, req *pb.ReadPosReturnRequest) (*pb.ReadPosReturnResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.Data.RoleName) {
+	if !utils.IsCompanyOrBranchOrStoreUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users are not allowed to read return")
 	}
 
@@ -166,20 +169,20 @@ func (s *posReturnService) ReadPosReturn(ctx context.Context, req *pb.ReadPosRet
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 	storeRole := os.Getenv("STORE_USER_ROLE")
 
-	if loginRole.Data.RoleName == companyRole {
-		if !utils.VerifyCompanyUserAccess(loginRole.Data.RoleName, posReturn.CompanyId, req.JwtPayload.CompanyId) {
+	if loginRole.PosRole.RoleName == companyRole {
+		if !utils.VerifyCompanyUserAccess(loginRole.PosRole.RoleName, posReturn.CompanyId, req.JwtPayload.CompanyId) {
 			return nil, errors.New("company users can only retrieve return data within their company")
 		}
 	}
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posReturn.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posReturn.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only retrieve return data within their branch")
 		}
 	}
 
-	if loginRole.Data.RoleName == storeRole {
-		if !utils.VerifyStoreUserAccess(loginRole.Data.RoleName, posReturn.StoreId, req.JwtPayload.StoreId) {
+	if loginRole.PosRole.RoleName == storeRole {
+		if !utils.VerifyStoreUserAccess(loginRole.PosRole.RoleName, posReturn.StoreId, req.JwtPayload.StoreId) {
 			return nil, errors.New("store users can only retrieve return data within their branch")
 		}
 	}
@@ -192,15 +195,15 @@ func (s *posReturnService) ReadPosReturn(ctx context.Context, req *pb.ReadPosRet
 func (s *posReturnService) UpdatePosReturn(ctx context.Context, req *pb.UpdatePosReturnRequest) (*pb.UpdatePosReturnResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant update return data")
 	}
 
@@ -212,8 +215,8 @@ func (s *posReturnService) UpdatePosReturn(ctx context.Context, req *pb.UpdatePo
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posReturn.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posReturn.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only update return data within their branch")
 		}
 	}
@@ -253,15 +256,15 @@ func (s *posReturnService) UpdatePosReturn(ctx context.Context, req *pb.UpdatePo
 func (s *posReturnService) DeletePosReturn(ctx context.Context, req *pb.DeletePosReturnRequest) (*pb.DeletePosReturnResponse, error) {
 	// Extract role ID from JWT payload
 	jwtRoleID := req.JwtPayload.Role
-	token := req.JwtToken
+	// token := req.JwtToken
 
 	// Get user login role name
-	loginRole, err := utils.GetPosRole(jwtRoleID, token)
+	loginRole, err := utils.GetPosRoleById(s.CompanyServiceConn, jwtRoleID, req.JwtPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	if !utils.IsBranchUser(loginRole.Data.RoleName) {
+	if !utils.IsBranchUser(loginRole.PosRole.RoleName) {
 		return nil, errors.New("users cant delete return data")
 	}
 
@@ -273,8 +276,8 @@ func (s *posReturnService) DeletePosReturn(ctx context.Context, req *pb.DeletePo
 
 	branchRole := os.Getenv("BRANCH_USER_ROLE")
 
-	if loginRole.Data.RoleName == branchRole {
-		if !utils.VerifyBranchUserAccess(loginRole.Data.RoleName, posReturn.BranchId, req.JwtPayload.BranchId) {
+	if loginRole.PosRole.RoleName == branchRole {
+		if !utils.VerifyBranchUserAccess(loginRole.PosRole.RoleName, posReturn.BranchId, req.JwtPayload.BranchId) {
 			return nil, errors.New("branch users can only delete return data within their branch")
 		}
 	}

@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package pos;
+
+option go_package="github.com/Andrewalifb/alpha-pos-system-sales-service";
+
+import "google/protobuf/timestamp.proto";
+import "alpha-pos-system-sales-service/api/proto/common.proto";
+
+// PosUser
+message PosUser {
+  string user_id = 1;
+  string username = 2;
+  string password_hash = 3;
+  string role_id = 4;
+  string company_id = 5;
+  string branch_id = 6;
+  string store_id = 7;
+  string first_name = 8;
+  string last_name = 9;
+  string email = 10;
+  string phone_number = 11;
+  google.protobuf.Timestamp created_at = 12;
+  string created_by = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  string updated_by = 15;
+}
+
+// Request and Response messages
+message CreatePosUserRequest {
+  PosUser pos_user = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message CreatePosUserResponse {
+  PosUser pos_user = 1;
+}
+
+message ReadPosUserRequest {
+  string user_id = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message ReadPosUserResponse {
+  PosUser pos_user = 1;
+}
+
+message UpdatePosUserRequest {
+  PosUser pos_user = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message UpdatePosUserResponse {
+  PosUser pos_user = 1;
+}
+
+message DeletePosUserRequest {
+  string user_id = 1;
+  JWTPayload jwt_payload = 2;
+}
+
+message DeletePosUserResponse {
+  bool success = 1;
+}
+
+message ReadAllPosUsersRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  JWTPayload jwt_payload = 3;
+}
+
+
+message ReadAllPosUsersResponse {
+  repeated PosUser pos_users = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  int32 max_page = 4;
+  int64 count = 5;
+}
+
+
+// Request and Response messages for Login
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  JWTPayload jwt_payload = 1;
+  string jwt_token = 2;  
+}
+
+
+// PosUserService
+service PosUserService {
+  rpc CreatePosUser(CreatePosUserRequest) returns (CreatePosUserResponse);
+  rpc ReadPosUser(ReadPosUserRequest) returns (ReadPosUserResponse);
+  rpc UpdatePosUser(UpdatePosUserRequest) returns (UpdatePosUserResponse);
+  rpc DeletePosUser(DeletePosUserRequest) returns (DeletePosUserResponse);
+  rpc ReadAllPosUsers(ReadAllPosUsersRequest) returns (ReadAllPosUsersResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+}
